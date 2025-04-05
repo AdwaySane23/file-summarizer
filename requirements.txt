@@ -1,5 +1,8 @@
+streamlit
 PyPDF2
 python-docx
-streamlit
-transformers
 torch
+
+# Pin these to specific versions
+transformers==4.30.2
+accelerate==0.20.3
