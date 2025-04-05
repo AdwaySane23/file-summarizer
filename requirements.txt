@@ -1,7 +1,5 @@
-streamlit
-PyPDF2
-python-docx
-torch
-transformers==4.30.2
-accelerate==0.20.3
-pycryptodome
+streamlit==1.44.1
+pypdf2==3.0.1
+python-docx==1.1.2
+torch==2.6.0
+transformers==4.51.0
