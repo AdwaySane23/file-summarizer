@@ -1,5 +1,8 @@
-import streamlit as st
 import os
+# Force the use of the pure-Python implementation of tokenizers.
+os.environ["TOKENIZERS_PYTHON_IMPLEMENTATION"] = "python"
+
+import streamlit as st
 import tempfile
 import PyPDF2
 import docx
@@ -18,7 +21,7 @@ def extract_text(file):
         return file.read().decode('utf-8')
     
     elif ext == '.pdf':
-        # PyPDF2 can work with file-like objects
+        # PyPDF2 works with file-like objects
         pdf_reader = PyPDF2.PdfReader(file)
         text = ""
         for page in pdf_reader.pages:
@@ -54,7 +57,7 @@ def summarize_text(text):
     chunks = chunk_text(text)
     summaries = []
     for chunk in chunks:
-        # Adjust max_length/min_length if necessary
+        # Adjust max_length/min_length as needed
         summary = summarizer(chunk, max_length=150, min_length=40, do_sample=False)
         summaries.append(summary[0]['summary_text'])
     return "\n\n".join(summaries)
