@@ -1,57 +1,77 @@
 import streamlit as st
+import os
+import tempfile
 import PyPDF2
+import docx
 from transformers import pipeline
 
-# Cache the pipeline so that it loads only once.
-@st.cache_resource(show_spinner=False)
-def get_summarizer():
-    # Explicitly specify the model and revision to avoid internal API issues.
-    summarizer = pipeline(
-        "summarization",
-        model="sshleifer/distilbart-cnn-12-6",
-        revision="a4f8f3e",  # optional: specify revision if needed
-    )
-    return summarizer
-
-def extract_text_from_pdf(file):
-    try:
+def extract_text(file):
+    """
+    Extract text from various file types. For file-like objects, we use file.name 
+    to determine the extension.
+    """
+    filename = file.name
+    ext = os.path.splitext(filename)[1].lower()
+    
+    if ext in ['.txt', '.md']:
+        # For text files, decode bytes to string
+        return file.read().decode('utf-8')
+    
+    elif ext == '.pdf':
+        # PyPDF2 can work with file-like objects
         pdf_reader = PyPDF2.PdfReader(file)
-    except Exception as e:
-        st.error(f"Error opening PDF file: {e}")
+        text = ""
+        for page in pdf_reader.pages:
+            page_text = page.extract_text()
+            if page_text:
+                text += page_text + "\n"
+        return text
+    
+    elif ext == '.docx':
+        # python-docx does not support file-like objects directly, so we save temporarily.
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as tmp:
+            tmp.write(file.read())
+            tmp_path = tmp.name
+        doc = docx.Document(tmp_path)
+        text = "\n".join([para.text for para in doc.paragraphs])
+        os.unlink(tmp_path)
+        return text
+    else:
         return None
 
-    text = ""
-    for page in pdf_reader.pages:
-        page_text = page.extract_text()
-        if page_text:
-            text += page_text + "\n"
-    return text
+def chunk_text(text, chunk_size=500):
+    """Split text into chunks to handle model input limits."""
+    words = text.split()
+    return [" ".join(words[i:i+chunk_size]) for i in range(0, len(words), chunk_size)]
 
+@st.cache_resource(show_spinner=False)
+def get_summarizer():
+    """Load and cache the summarization pipeline."""
+    return pipeline("summarization")
+
+def summarize_text(text):
+    summarizer = get_summarizer()
+    chunks = chunk_text(text)
+    summaries = []
+    for chunk in chunks:
+        # Adjust max_length/min_length if necessary
+        summary = summarizer(chunk, max_length=150, min_length=40, do_sample=False)
+        summaries.append(summary[0]['summary_text'])
+    return "\n\n".join(summaries)
+
+# Streamlit App Layout
 st.title("File Summarizer")
+st.write("Upload a file (.txt, .pdf, or .docx) to get a summary of its content.")
 
 uploaded_file = st.file_uploader("Choose a file", type=["txt", "md", "pdf", "docx"])
 
 if uploaded_file is not None:
-    # Process the file based on its type.
-    if uploaded_file.type == "application/pdf":
-        text = extract_text_from_pdf(uploaded_file)
-    elif uploaded_file.type in ["text/plain", "text/markdown"]:
-        text = uploaded_file.getvalue().decode("utf-8")
-    elif uploaded_file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-        # For Word documents, use python-docx to extract text.
-        from docx import Document
-        doc = Document(uploaded_file)
-        text = "\n".join([para.text for para in doc.paragraphs])
+    text = extract_text(uploaded_file)
+    if text is None:
+        st.error("Unsupported file type.")
     else:
-        text = None
-
-    if text:
         st.write("Extracted text length:", len(text))
         st.info("Summarizing... please wait.")
-        summarizer = get_summarizer()
-        # Optionally, you might split long text into chunks if needed.
-        summary_result = summarizer(text, max_length=130, min_length=30, do_sample=False)
+        summary = summarize_text(text)
         st.subheader("Summary")
-        st.write(summary_result[0]['summary_text'])
-    else:
-        st.error("Unsupported file type or unable to extract text.")
+        st.write(summary)
